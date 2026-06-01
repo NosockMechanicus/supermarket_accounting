@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  # MongoDB Database Service
+  mongodb:
+    image: mongo:7.0
+    container_name: supermarket_mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: rootpassword
+      MONGO_INITDB_DATABASE: supermarket_accounting_system
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+      - mongo_config:/data/configdb
+      - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+    networks:
+      - supermarket_network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Node.js Backend Service
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: supermarket_backend
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      MONGODB_URI: mongodb://root:rootpassword@mongodb:27017/supermarket_accounting_system?authSource=admin
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./server.js:/app/server.js
+      - ./package.json:/app/package.json
+      - ./migrations:/app/migrations
+    networks:
+      - supermarket_network
+    command: npm start
+    healthcheck:
+      test: curl -f http://localhost:3000/api/health || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mongo_data:
+  mongo_config:
+
+networks:
+  supermarket_network:
+    driver: bridge

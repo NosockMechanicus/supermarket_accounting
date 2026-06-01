@@ -1,0 +1,38 @@
+{
+  "name": "supermarket-accounting-system",
+  "version": "1.0.0",
+  "description": "Complete supermarket accounting information system with Docker support",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "migrate": "node migrations/runner.js",
+    "dev": "nodemon server.js",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "docker:build": "docker-compose up --build -d"
+  },
+  "keywords": [
+    "supermarket",
+    "accounting",
+    "inventory",
+    "management",
+    "system"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "mongoose": "^7.5.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "body-parser": "^1.20.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
