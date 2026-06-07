@@ -16,8 +16,11 @@ module.exports = {
               sku: { bsonType: 'string' },
               name: { bsonType: 'string' },
               category: { bsonType: 'string' },
-              price: { bsonType: 'double', minimum: 0 },
-              unit: { bsonType: 'string' }
+              price: { bsonType: ['double', 'int', 'decimal'], minimum: 0 },
+              unit: { bsonType: 'string' },
+              barcode: { bsonType: 'string' },
+              supplier_id: { bsonType: 'string' },
+              has_expiry: { bsonType: 'bool' }
             }
           }
         }
@@ -60,9 +63,10 @@ module.exports = {
             properties: {
               _id: { bsonType: 'objectId' },
               sku: { bsonType: 'string' },
-              quantity: { bsonType: 'int', minimum: 0 },
+              quantity: { bsonType: ['int', 'double'], minimum: 0 },
               location: { bsonType: 'string' },
-              last_updated: { bsonType: 'date' }
+              last_updated: { bsonType: 'date' },
+              expiry_date: { bsonType: 'date' }
             }
           }
         }
@@ -84,7 +88,7 @@ module.exports = {
               order_id: { bsonType: 'string' },
               timestamp: { bsonType: 'date' },
               items: { bsonType: 'array' },
-              total_amount: { bsonType: 'double', minimum: 0 },
+              total_amount: { bsonType: ['double', 'int', 'decimal'], minimum: 0 },
               payment_method: { enum: ['cash', 'card', 'online'] }
             }
           }
@@ -145,52 +149,40 @@ module.exports = {
       await db.collection('products').createIndex({ name: 1 });
       await db.collection('products').createIndex({ category: 1 });
       console.log('  → Created indexes for products');
-    } catch (e) {
-      // Index might already exist
-    }
+    } catch (e) {}
 
     try {
       await db.collection('users').createIndex({ username: 1 }, { unique: true });
       await db.collection('users').createIndex({ role: 1 });
       console.log('  → Created indexes for users');
-    } catch (e) {
-      // Index might already exist
-    }
+    } catch (e) {}
 
     try {
       await db.collection('inventory').createIndex({ sku: 1 }, { unique: true });
       await db.collection('inventory').createIndex({ location: 1 });
+      await db.collection('inventory').createIndex({ expiry_date: 1 });
       console.log('  → Created indexes for inventory');
-    } catch (e) {
-      // Index might already exist
-    }
+    } catch (e) {}
 
     try {
       await db.collection('orders').createIndex({ order_id: 1 }, { unique: true });
       await db.collection('orders').createIndex({ timestamp: -1 });
       console.log('  → Created indexes for orders');
-    } catch (e) {
-      // Index might already exist
-    }
+    } catch (e) {}
 
     try {
       await db.collection('suppliers').createIndex({ _id: 1 }, { unique: true });
       console.log('  → Created indexes for suppliers');
-    } catch (e) {
-      // Index might already exist
-    }
+    } catch (e) {}
 
     try {
       await db.collection('supply_contracts').createIndex({ contract_id: 1 }, { unique: true });
       await db.collection('supply_contracts').createIndex({ supplier_id: 1 });
       console.log('  → Created indexes for supply_contracts');
-    } catch (e) {
-      // Index might already exist
-    }
+    } catch (e) {}
   },
 
   async down(db) {
-    // Rollback: Drop all collections
     try {
       await db.collection('products').drop();
       await db.collection('users').drop();

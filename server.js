@@ -1,334 +1,326 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-
+const fs = require('fs');
+const path = require('path');
+ 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/supermarket_accounting_system';
-
-// Middleware
+ 
 app.use(cors());
 app.use(express.json());
-
+ 
 // ===========================
-// 1. MONGODB CONNECTION
+// MIGRATIONS
 // ===========================
-
-mongoose.connect(MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-  serverSelectionTimeoutMS: 5000,
-})
-.then(() => console.log('✓ Connected to MongoDB...'))
-.catch(err => {
-  console.error('✗ Could not connect to MongoDB...', err);
-  setTimeout(() => mongoose.connect(MONGODB_URI), 5000);
-});
-
-// ===========================
-// 2. DATABASE SCHEMAS
-// ===========================
-
-const productSchema = new mongoose.Schema({
-  sku: { type: String, required: true, unique: true },
-  name: { type: String, required: true },
-  category: String,
-  price: { type: Number, required: true, min: 0 },
-  unit: String
-});
-
-const userSchema = new mongoose.Schema({
-  username: { type: String, required: true, unique: true },
-  full_name: { type: String, required: true },
-  role: { type: String, enum: ['admin', 'manager', 'cashier', 'warehouse'], required: true },
-  access_level: { type: Number, default: 1 },
-  work_status: { type: String, enum: ['active', 'inactive'], default: 'active' }
-});
-
-const inventorySchema = new mongoose.Schema({
-  sku: { type: String, required: true, unique: true },
-  quantity: { type: Number, required: true, min: 0 },
-  location: String,
-  last_updated: { type: Date, default: Date.now }
-});
-
-const orderSchema = new mongoose.Schema({
-  order_id: { type: String, required: true, unique: true },
-  timestamp: { type: Date, default: Date.now },
-  items: [{
-    sku: String,
-    quantity: Number
-  }],
-  total_amount: { type: Number, required: true, min: 0 },
-  payment_method: { type: String, enum: ['cash', 'card', 'online'] }
-});
-
-const supplierSchema = new mongoose.Schema({
-  _id: { type: String, required: true },
-  name: { type: String, required: true },
-  contact_person: String,
-  categories: [String]
-});
-
-const supplyContractSchema = new mongoose.Schema({
-  contract_id: { type: String, required: true, unique: true },
-  supplier_id: { type: String, required: true },
-  order_date: { type: Date, default: Date.now },
-  items: [{
-    sku: String,
-    quantity: Number
-  }],
-  status: { type: String, enum: ['pending', 'completed', 'cancelled'], default: 'pending' }
-});
-
-// ===========================
-// 3. MODELS
-// ===========================
-
-const Product = mongoose.model('Product', productSchema, 'products');
-const User = mongoose.model('User', userSchema, 'users');
-const Inventory = mongoose.model('Inventory', inventorySchema, 'inventory');
-const Order = mongoose.model('Order', orderSchema, 'orders');
-const Supplier = mongoose.model('Supplier', supplierSchema, 'suppliers');
-const SupplyContract = mongoose.model('SupplyContract', supplyContractSchema, 'supply_contracts');
-
-// ===========================
-// 4. HEALTH CHECK
-// ===========================
-
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'healthy',
-    timestamp: new Date(),
-    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
-  });
-});
-
-// ===========================
-// 5. USER ENDPOINTS
-// ===========================
-
-// POST: Register worker
-app.post('/api/users/register', async (req, res) => {
+ 
+async function runMigrations() {
   try {
-    const newUser = new User({
-      username: req.body.username,
-      full_name: req.body.full_name,
-      role: req.body.role || 'cashier',
-      access_level: req.body.access_level || 1
-    });
-    const savedUser = await newUser.save();
-    res.status(201).json({ 
-      user_id: savedUser._id, 
-      status: "created" 
-    });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
+    const db = mongoose.connection.db;
+    const migrationsCollection = db.collection('_migrations');
+ 
+    const migrationsDir = path.join(__dirname, 'migrations');
+    const migrationFiles = fs.readdirSync(migrationsDir)
+      .filter(f => f.startsWith('migration_') && f.endsWith('.js'))
+      .sort();
+ 
+    await migrationsCollection.createIndex({ name: 1 }, { unique: true }).catch(() => {});
+    console.log(`\n📊 Running ${migrationFiles.length} migration(s)...\n`);
+ 
+    for (const file of migrationFiles) {
+      const migrationName = file.replace('.js', '');
+      const existing = await migrationsCollection.findOne({ name: migrationName }).catch(() => null);
+ 
+      if (existing) {
+        console.log(`  ⊘ ${migrationName} (already applied)`);
+        continue;
+      }
+ 
+      try {
+        const migration = require(path.join(migrationsDir, file));
+        await migration.up(db);
+        await migrationsCollection.insertOne({ name: migrationName, applied_at: new Date() });
+        console.log(`  ✓ ${migrationName} (applied)`);
+      } catch (error) {
+        console.error(`  ✗ ${migrationName} (failed)`, error.message);
+      }
+    }
+ 
+    console.log('\n✓ Migrations completed\n');
+  } catch (error) {
+    console.error('Migration error:', error);
   }
-});
-
-// GET: Get user info
-app.get('/api/users/:id', async (req, res) => {
-  try {
-    const user = await User.findById(req.params.id);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json({
-      full_name: user.full_name,
-      role: user.role,
-      work_status: user.work_status
-    });
-  } catch (err) {
-    res.status(400).json({ error: 'Invalid ID format' });
-  }
-});
-
+}
+ 
 // ===========================
-// 6. PRODUCT ENDPOINTS
+// ROUTES
 // ===========================
-
-// GET: All products
+ 
+// Products
 app.get('/api/products', async (req, res) => {
   try {
-    const products = await Product.find({}, 'sku name price -_id');
+    const db = mongoose.connection.db;
+    const products = await db.collection('products').find({}).toArray();
     res.json(products);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
-// POST: Add new product (Admin)
+ 
 app.post('/api/products', async (req, res) => {
   try {
-    const newProduct = new Product({
-      sku: req.body.sku,
-      name: req.body.name,
-      price: req.body.price,
-      unit: req.body.unit,
-      category: req.body.category || "Загальне"
-    });
-    const savedProduct = await newProduct.save();
-    res.status(201).json({
-      sku: savedProduct.sku,
-      name: savedProduct.name
-    });
-  } catch (err) {
-    res.status(400).json({ error: "Error adding product" });
-  }
+    const db = mongoose.connection.db;
+    const { sku, name, price, unit, category, has_expiry, expiry_date } = req.body;
+    const doc = { sku, name, price, unit, category, has_expiry: !!has_expiry };
+    if (has_expiry && expiry_date) doc.expiry_date = new Date(expiry_date);
+    await db.collection('products').insertOne(doc);
+    res.status(201).json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ===========================
-// 7. INVENTORY ENDPOINTS
-// ===========================
-
-// GET: View inventory
+app.put('/api/products/:sku', async (req, res) => {
+  try {
+    const db = mongoose.connection.db;
+    const { sku } = req.params;
+    const { name, price, unit, category } = req.body;
+    if (!name || price == null) return res.status(400).json({ error: 'Назва та ціна обовʼязкові' });
+    const result = await db.collection('products').updateOne(
+      { sku },
+      { $set: { name, price: parseFloat(price), unit, category } }
+    );
+    if (result.matchedCount === 0) return res.status(404).json({ error: 'Товар не знайдено' });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+ 
+// Inventory
 app.get('/api/inventory', async (req, res) => {
   try {
-    const stock = await Inventory.find({}, 'sku quantity location -_id');
-    res.json(stock);
-  } catch (err) {
-    res.status(500).json({ error: "Error retrieving inventory" });
-  }
+    const db = mongoose.connection.db;
+    const inventory = await db.collection('inventory').find({}).toArray();
+    res.json(inventory);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
-// PATCH: Update inventory quantity
+ 
 app.patch('/api/inventory/:sku', async (req, res) => {
   try {
+    const db = mongoose.connection.db;
+    const { sku } = req.params;
     const { adjustment } = req.body;
-    
-    const updatedStock = await Inventory.findOneAndUpdate(
-      { sku: req.params.sku },
-      { 
-        $inc: { quantity: adjustment },
-        $set: { last_updated: Date.now() }
-      },
-      { new: true }
+    const item = await db.collection('inventory').findOne({ sku });
+    if (!item) return res.status(404).json({ error: 'SKU не знайдено' });
+    const new_quantity = item.quantity + adjustment;
+    if (new_quantity < 0) return res.status(400).json({ error: 'Недостатньо товару на складі' });
+    await db.collection('inventory').updateOne(
+      { sku },
+      { $set: { quantity: new_quantity, last_updated: new Date() } }
     );
-
-    if (!updatedStock) return res.status(404).json({ error: 'Item not found in inventory' });
-    
-    res.json({
-      sku: updatedStock.sku,
-      new_quantity: updatedStock.quantity,
-      status: "updated"
-    });
-  } catch (err) {
-    res.status(400).json({ error: "Error updating inventory" });
-  }
+    res.json({ ok: true, new_quantity });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
-// ===========================
-// 8. ORDER ENDPOINTS
-// ===========================
-
-// POST: Create order (sale)
-app.post('/api/orders', async (req, res) => {
-  try {
-    const order = new Order({
-      order_id: `ORD-${Date.now()}`,
-      items: req.body.items,
-      total_amount: req.body.total_amount,
-      payment_method: req.body.payment_method || 'cash'
-    });
-    
-    const savedOrder = await order.save();
-    res.status(201).json({
-      order_id: savedOrder.order_id,
-      status: "прийнято"
-    });
-  } catch (err) {
-    res.status(400).json({ error: "Error creating order" });
-  }
-});
-
-// GET: View sales history
+ 
+// Orders
 app.get('/api/orders', async (req, res) => {
   try {
-    const orders = await Order.find().sort({ timestamp: -1 });
-    res.json(orders);
-  } catch (err) {
-    res.status(500).json({ error: "Error retrieving orders" });
+    const db = mongoose.connection.db;
+    const orders = await db.collection('orders').find({}).toArray();
+    console.log(`[orders] found ${orders.length} documents`);
+ 
+    const normalized = orders.map(o => ({
+      ...o,
+      order_id: o.order_id || o.order_number || o._id.toString(),
+      total_amount: typeof o.total_amount === 'number' ? o.total_amount
+                  : typeof o.total === 'number' ? o.total : 0,
+      payment_method: o.payment_method
+                    || (o.payment && typeof o.payment === 'object' ? o.payment.method : null)
+                    || (typeof o.payment === 'string' ? o.payment : 'cash'),
+      timestamp: o.timestamp || o.created_at || o._id.getTimestamp(),
+    }));
+ 
+    // Sort in JS to avoid issues with missing timestamp field
+    normalized.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+ 
+    res.json(normalized);
+  } catch (e) {
+    console.error('[orders] error:', e.message);
+    res.status(500).json({ error: e.message });
   }
 });
-
-// ===========================
-// 9. SUPPLIER ENDPOINTS
-// ===========================
-
-// GET: Supplier list
+ 
+app.post('/api/orders', async (req, res) => {
+  try {
+    const db = mongoose.connection.db;
+    const { items, total_amount, payment_method } = req.body;
+    const order_id = 'ORD_' + Date.now();
+    await db.collection('orders').insertOne({
+      order_id,
+      timestamp: new Date(),
+      items,
+      total_amount,
+      payment_method
+    });
+    res.status(201).json({ ok: true, order_id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+ 
+// Suppliers
 app.get('/api/suppliers', async (req, res) => {
   try {
-    const suppliers = await Supplier.find({}, '_id name');
-    const formatted = suppliers.map(s => ({
-      supplier_id: s._id,
-      name: s.name
-    }));
-    res.json(formatted);
-  } catch (err) {
-    res.status(500).json({ error: "Error retrieving suppliers" });
-  }
+    const db = mongoose.connection.db;
+    const suppliers = await db.collection('suppliers').find({}).toArray();
+    // Normalize _id field as supplier_id for frontend
+    const result = suppliers.map(s => ({ ...s, supplier_id: s._id }));
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
-// POST: Create supply contract
+ 
+// Supply contracts
 app.post('/api/supply-contracts', async (req, res) => {
   try {
-    const contract = new SupplyContract({
-      contract_id: `CON-${Date.now()}`,
-      supplier_id: req.body.supplier_id,
-      items: req.body.items.map(item => ({
-        sku: item.sku,
-        quantity: item.qty
-      }))
+    const db = mongoose.connection.db;
+    const { supplier_id, items } = req.body;
+    const contract_id = 'CONT_' + Date.now();
+    await db.collection('supply_contracts').insertOne({
+      contract_id,
+      supplier_id,
+      order_date: new Date(),
+      items,
+      status: 'pending'
     });
-    
-    const savedContract = await contract.save();
-    res.status(201).json({
-      contract_id: savedContract.contract_id,
-      status: "створено"
-    });
-  } catch (err) {
-    res.status(400).json({ error: "Error creating contract" });
-  }
+    res.status(201).json({ ok: true, contract_id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+ 
+// Users
+app.get('/api/users', async (req, res) => {
+  try {
+    const db = mongoose.connection.db;
+    const users = await db.collection('users').find({}).toArray();
+    res.json(users);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ===========================
-// 10. REPORTS ENDPOINTS
-// ===========================
+app.put('/api/users/:id', async (req, res) => {
+  try {
+    const db = mongoose.connection.db;
+    const { ObjectId } = require('mongodb');
+    const { full_name, role, access_level, work_status } = req.body;
+    if (!full_name || !role) return res.status(400).json({ error: "ПІБ та роль обов'язкові" });
+    const result = await db.collection('users').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { full_name, role, access_level: parseInt(access_level), work_status } }
+    );
+    if (result.matchedCount === 0) return res.status(404).json({ error: 'Працівника не знайдено' });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
-// GET: Expiry report
+app.get('/api/users/:id', async (req, res) => {
+  try {
+    const db = mongoose.connection.db;
+    const { ObjectId } = require('mongodb');
+    const user = await db.collection('users').findOne({ _id: new ObjectId(req.params.id) });
+    if (!user) return res.status(404).json({ error: 'Не знайдено' });
+    res.json(user);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+ 
+app.post('/api/users/register', async (req, res) => {
+  try {
+    const db = mongoose.connection.db;
+    const { username, full_name, role, access_level } = req.body;
+    const result = await db.collection('users').insertOne({
+      username, full_name, role,
+      access_level: parseInt(access_level),
+      work_status: 'active'
+    });
+    res.status(201).json({ ok: true, user_id: result.insertedId });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+ 
+// Reports
 app.get('/api/admin/expired-report', async (req, res) => {
   try {
-    const stock = await Inventory.find();
-    const today = new Date();
+    const db = mongoose.connection.db;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() + 10);
+    const items = await db.collection('inventory').find({
+      expiry_date: { $exists: true, $lte: cutoff }
+    }).toArray();
+    const result = items.map(i => ({
+      sku: i.sku,
+      expiry_date: i.expiry_date?.toISOString().split('T')[0],
+      days_left: Math.floor((new Date(i.expiry_date) - new Date()) / 86400000)
+    }));
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+ 
+// Restock report
+app.get('/api/admin/restock-report', async (req, res) => {
+  try {
+    const db = mongoose.connection.db;
+    const threshold = parseInt(req.query.threshold) || 20;
 
-    const report = stock.map(item => {
-      const expiryDate = new Date("2026-05-20");
-      const diffTime = expiryDate - today;
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const inventory = await db.collection('inventory').find({ quantity: { $lt: threshold } }).toArray();
+    if (inventory.length === 0) return res.json([]);
+
+    const skus = inventory.map(i => i.sku);
+    const products = await db.collection('products').find({ sku: { $in: skus } }).toArray();
+    const suppliers = await db.collection('suppliers').find({}).toArray();
+
+    const productMap = {};
+    products.forEach(p => { productMap[p.sku] = p; });
+
+    const result = inventory.map(item => {
+      const product = productMap[item.sku] || {};
+      const supplierId = product.supplier_id || null;
+      const supplier = supplierId ? suppliers.find(s => s._id === supplierId) : null;
+
+      // if no direct supplier_id, try to match by category
+      let matchedSupplier = supplier;
+      if (!matchedSupplier && product.category) {
+        matchedSupplier = suppliers.find(s =>
+          Array.isArray(s.categories) && s.categories.includes(product.category)
+        );
+      }
+
+      const suggested = Math.max(threshold * 2 - item.quantity, threshold);
 
       return {
         sku: item.sku,
-        expiry_date: expiryDate.toISOString().split('T')[0],
-        days_left: diffDays
+        name: product.name || item.sku,
+        category: product.category || '—',
+        quantity: item.quantity,
+        location: item.location || '—',
+        supplier_id: matchedSupplier?._id || null,
+        supplier_name: matchedSupplier?.name || 'Постачальник невідомий',
+        supplier_contact: matchedSupplier?.contact_person || '—',
+        suggested_qty: suggested,
       };
-    });
-    
-    const urgentReport = report.filter(item => item.days_left <= 10);
-    res.json(urgentReport);
-  } catch (err) {
-    res.status(500).json({ error: "Error generating report" });
-  }
+    }).sort((a, b) => a.quantity - b.quantity);
+
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ===========================
-// 11. START SERVER
+// MONGODB + START SERVER
 // ===========================
-
-app.listen(PORT, () => {
-  console.log(`\n${'='.repeat(50)}`);
-  console.log(`  🏪 Supermarket Accounting System`);
-  console.log(`${'='.repeat(50)}`);
-  console.log(`  ✓ Server running on http://localhost:${PORT}`);
-  console.log(`  ✓ API Base URL: http://localhost:${PORT}/api`);
-  console.log(`  ✓ Health Check: http://localhost:${PORT}/api/health`);
-  console.log(`${'='.repeat(50)}\n`);
+ 
+mongoose.connect(MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  serverSelectionTimeoutMS: 10000,
+})
+.then(async () => {
+  console.log('✓ Connected to MongoDB...');
+  await runMigrations();
+ 
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`✓ Server running on port ${PORT}`);
+  });
+})
+.catch(err => {
+  console.error('✗ Could not connect to MongoDB...', err.message);
+  process.exit(1);
 });

@@ -2,11 +2,11 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy package files
-COPY package.json package-lock.json ./
+# Copy package file
+COPY package.json ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN npm install
 
 # Copy application code
 COPY server.js .

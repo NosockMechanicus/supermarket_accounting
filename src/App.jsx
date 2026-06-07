@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 
-const API = "http://localhost:3000/api";
+const API = "/api";
 
 const fetcher = async (path, method = "GET", body = null) => {
   const opts = { method, headers: { "Content-Type": "application/json" } };
@@ -11,13 +11,13 @@ const fetcher = async (path, method = "GET", body = null) => {
 };
 
 const TABS = [
-  { id: "dashboard", label: "Панель", icon: "📊" },
-  { id: "products", label: "Товари", icon: "🛒" },
-  { id: "inventory", label: "Склад", icon: "📦" },
-  { id: "orders", label: "Продажі", icon: "🧾" },
-  { id: "users", label: "Персонал", icon: "👤" },
-  { id: "suppliers", label: "Постачання", icon: "🚚" },
-  { id: "reports", label: "Звіти", icon: "📋" },
+  { id: "dashboard", label: "Панель" },
+  { id: "products", label: "Товари" },
+  { id: "inventory", label: "Склад" },
+  { id: "orders", label: "Продажі" },
+  { id: "users", label: "Персонал" },
+  { id: "suppliers", label: "Постачання" },
+  { id: "reports", label: "Звіти" },
 ];
 
 const Badge = ({ children, color = "gray" }) => {
@@ -85,37 +85,31 @@ export default function App() {
   };
 
   return (
-    <div style={{ fontFamily: "var(--font-sans)", minHeight: "100vh", background: "var(--color-background-tertiary)" }}>
-      <header style={{ background: "var(--color-background-primary)", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "0 1.5rem", display: "flex", alignItems: "center", gap: 16, height: 56 }}>
-        <span style={{ fontWeight: 500, fontSize: 16, color: "var(--color-text-primary)", marginRight: 8 }}>🏪 Маркет</span>
-        <nav style={{ display: "flex", gap: 8, overflowX: "auto" }}>
+    <div style={{ fontFamily: "var(--font-sans)", minHeight: "100vh", background: "#EAECEF" }}>
+      <header style={{ background: "#1E2328", borderBottom: "1px solid #13161A", padding: "0 1.5rem", display: "flex", alignItems: "center", gap: 24, height: 52, boxShadow: "0 1px 4px rgba(0,0,0,0.3)" }}>
+        <span style={{ fontWeight: 600, fontSize: 15, color: "#F0F2F5", letterSpacing: "0.01em", whiteSpace: "nowrap", borderRight: "1px solid #3A3F47", paddingRight: 24 }}>Маркет</span>
+        <nav style={{ display: "flex", gap: 2, overflowX: "auto" }}>
           {TABS.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} style={{
-              background: tab === t.id ? "#185FA5" : "var(--color-background-secondary)",
-              border: tab === t.id ? "none" : "0.5px solid var(--color-border-tertiary)",
-              borderRadius: 8,
-              padding: "8px 16px",
+              background: tab === t.id ? "#2D5FA3" : "transparent",
+              border: "none",
+              borderRadius: 6,
+              padding: "6px 14px",
               cursor: "pointer",
               fontSize: 13,
-              fontWeight: 500,
-              color: tab === t.id ? "#fff" : "var(--color-text-primary)",
+              fontWeight: tab === t.id ? 600 : 400,
+              color: tab === t.id ? "#FFFFFF" : "#B0B7C0",
               whiteSpace: "nowrap",
-              transition: "all 0.15s ease",
-              boxShadow: tab === t.id ? "0 2px 4px rgba(24, 95, 165, 0.15)" : "none"
+              transition: "all 0.12s ease",
+              letterSpacing: "0.01em",
             }}
             onMouseEnter={e => {
-              if (tab !== t.id) {
-                e.target.style.background = "var(--color-background-primary)";
-                e.target.style.borderColor = "var(--color-border-secondary)";
-              }
+              if (tab !== t.id) e.target.style.color = "#E8ECF0";
             }}
             onMouseLeave={e => {
-              if (tab !== t.id) {
-                e.target.style.background = "var(--color-background-secondary)";
-                e.target.style.borderColor = "var(--color-border-tertiary)";
-              }
+              if (tab !== t.id) e.target.style.color = "#B0B7C0";
             }}>
-              {t.icon} {t.label}
+              {t.label}
             </button>
           ))}
         </nav>
@@ -171,7 +165,7 @@ function Dashboard({ notify }) {
 
       {lowStock.length > 0 && (
         <Card style={{ borderLeft: "3px solid #E24B4A", marginBottom: "1.5rem" }}>
-          <p style={{ fontWeight: 500, margin: "0 0 8px", color: "#A32D2D" }}>⚠️ Малий залишок ({lowStock.length} позицій)</p>
+          <p style={{ fontWeight: 500, margin: "0 0 8px", color: "#A32D2D" }}>Малий залишок ({lowStock.length} позицій)</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {lowStock.map(i => (
               <span key={i.sku} style={{ fontSize: 13, background: "#FCEBEB", color: "#A32D2D", borderRadius: 6, padding: "2px 8px" }}>
@@ -212,9 +206,12 @@ function Dashboard({ notify }) {
 function Products({ notify }) {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ sku: "", name: "", price: "", unit: "", category: "" });
+  const [form, setForm] = useState({ sku: "", name: "", price: "", unit: "", category: "", has_expiry: false, expiry_date: "" });
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState("");
+  const [editingSku, setEditingSku] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -226,23 +223,53 @@ function Products({ notify }) {
   const handleAdd = async () => {
     try {
       if (!form.sku || !form.name || !form.price) { notify("Заповніть обовʼязкові поля", "error"); return; }
-      await fetcher("/products", "POST", { ...form, price: parseFloat(form.price) });
-      notify("Товар додано ✓");
-      setForm({ sku: "", name: "", price: "", unit: "", category: "" });
+      if (form.has_expiry && !form.expiry_date) { notify("Вкажіть термін придатності", "error"); return; }
+      const payload = { ...form, price: parseFloat(form.price), has_expiry: !!form.has_expiry };
+      if (!form.has_expiry) delete payload.expiry_date;
+      await fetcher("/products", "POST", payload);
+      notify("Товар додано");
+      setForm({ sku: "", name: "", price: "", unit: "", category: "", has_expiry: false, expiry_date: "" });
       setShowForm(false);
       load();
     } catch (e) { notify(e.message, "error"); }
+  };
+
+  const startEdit = (p) => {
+    setEditingSku(p.sku);
+    setEditForm({ name: p.name || "", price: p.price ?? "", unit: p.unit || "", category: p.category || "" });
+    setShowForm(false);
+  };
+
+  const cancelEdit = () => { setEditingSku(null); setEditForm({}); };
+
+  const handleSave = async (sku) => {
+    try {
+      if (!editForm.name || !editForm.price) { notify("Назва та ціна обовʼязкові", "error"); return; }
+      setSaving(true);
+      await fetcher(`/products/${sku}`, "PUT", { ...editForm, price: parseFloat(editForm.price) });
+      notify("Зміни збережено");
+      setEditingSku(null);
+      load();
+    } catch (e) { notify(e.message, "error"); }
+    finally { setSaving(false); }
   };
 
   const filtered = products.filter(p =>
     p.name?.toLowerCase().includes(search.toLowerCase()) || p.sku?.toLowerCase().includes(search.toLowerCase())
   );
 
+  const inputStyle = {
+    width: "100%", boxSizing: "border-box", padding: "5px 8px",
+    border: "1px solid var(--color-border-secondary)", borderRadius: 6,
+    fontSize: 13, background: "var(--color-background-primary)",
+    color: "var(--color-text-primary)"
+  };
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
         <h2 style={{ fontSize: 20, fontWeight: 500, margin: 0 }}>Товари</h2>
-        <button onClick={() => setShowForm(!showForm)} style={{ background: "#185FA5", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13 }}>
+        <button onClick={() => { setShowForm(!showForm); cancelEdit(); }} style={{ background: "#185FA5", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13 }}>
           {showForm ? "Скасувати" : "+ Додати товар"}
         </button>
       </div>
@@ -256,7 +283,18 @@ function Products({ notify }) {
             <Input label="Ціна (₴) *" type="number" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} placeholder="25.50" />
             <Input label="Одиниця" value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} placeholder="шт / кг / л" />
             <Input label="Категорія" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} placeholder="Хлібобулочні" />
+            <div style={{ marginBottom: 12, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+              <label style={{ fontSize: 13, color: "var(--color-text-secondary)", display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none", paddingBottom: 6 }}>
+                <input type="checkbox" checked={form.has_expiry} onChange={e => setForm({ ...form, has_expiry: e.target.checked, expiry_date: "" })} style={{ width: 14, height: 14, cursor: "pointer" }} />
+                Є термін придатності
+              </label>
+            </div>
           </div>
+          {form.has_expiry && (
+            <div style={{ marginBottom: 12, maxWidth: 220 }}>
+              <Input label="Термін придатності *" type="date" value={form.expiry_date} onChange={e => setForm({ ...form, expiry_date: e.target.value })} />
+            </div>
+          )}
           <button onClick={handleAdd} style={{ background: "#0F6E56", color: "#fff", border: "none", borderRadius: 8, padding: "8px 20px", cursor: "pointer", fontSize: 13 }}>
             Зберегти товар
           </button>
@@ -275,22 +313,70 @@ function Products({ notify }) {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
-                {["SKU", "Назва", "Ціна", ""].map(h => (
+                {["SKU", "Назва", "Категорія", "Ціна", "Одиниця", ""].map(h => (
                   <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontWeight: 500, color: "var(--color-text-secondary)", fontSize: 12 }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filtered.map((p, i) => (
-                <tr key={i} style={{ borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
-                  <td style={{ padding: "10px 12px" }}><code style={{ fontSize: 12 }}>{p.sku}</code></td>
-                  <td style={{ padding: "10px 12px", fontWeight: 500 }}>{p.name}</td>
-                  <td style={{ padding: "10px 12px" }}>₴{p.price?.toFixed(2)}</td>
-                  <td style={{ padding: "10px 12px" }}><Badge color="blue">активний</Badge></td>
-                </tr>
+                <>
+                  <tr key={p.sku} style={{ borderBottom: editingSku === p.sku ? "none" : "0.5px solid var(--color-border-tertiary)" }}>
+                    <td style={{ padding: "10px 12px" }}><code style={{ fontSize: 12 }}>{p.sku}</code></td>
+                    <td style={{ padding: "10px 12px", fontWeight: 500 }}>{p.name}</td>
+                    <td style={{ padding: "10px 12px", color: "var(--color-text-secondary)" }}>{p.category || "—"}</td>
+                    <td style={{ padding: "10px 12px" }}>₴{p.price?.toFixed(2)}</td>
+                    <td style={{ padding: "10px 12px", color: "var(--color-text-secondary)" }}>{p.unit || "—"}</td>
+                    <td style={{ padding: "10px 12px" }}>
+                      <button
+                        onClick={() => editingSku === p.sku ? cancelEdit() : startEdit(p)}
+                        style={{ fontSize: 12, padding: "4px 10px", borderRadius: 6, border: "0.5px solid var(--color-border-secondary)", background: editingSku === p.sku ? "#FCEBEB" : "transparent", color: editingSku === p.sku ? "#A32D2D" : "var(--color-text-primary)", cursor: "pointer" }}>
+                        {editingSku === p.sku ? "Скасувати" : "Редагувати"}
+                      </button>
+                    </td>
+                  </tr>
+                  {editingSku === p.sku && (
+                    <tr key={`edit-${p.sku}`} style={{ borderBottom: "0.5px solid var(--color-border-tertiary)", background: "var(--color-background-secondary)" }}>
+                      <td colSpan={6} style={{ padding: "12px 12px 16px" }}>
+                        <p style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-secondary)", margin: "0 0 10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                          Редагування: {p.sku}
+                        </p>
+                        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
+                          <div>
+                            <label style={{ fontSize: 12, color: "var(--color-text-secondary)", display: "block", marginBottom: 4 }}>Назва *</label>
+                            <input style={inputStyle} value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 12, color: "var(--color-text-secondary)", display: "block", marginBottom: 4 }}>Ціна (₴) *</label>
+                            <input style={inputStyle} type="number" value={editForm.price} onChange={e => setEditForm({ ...editForm, price: e.target.value })} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 12, color: "var(--color-text-secondary)", display: "block", marginBottom: 4 }}>Одиниця</label>
+                            <input style={inputStyle} value={editForm.unit} onChange={e => setEditForm({ ...editForm, unit: e.target.value })} placeholder="шт / кг / л" />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 12, color: "var(--color-text-secondary)", display: "block", marginBottom: 4 }}>Категорія</label>
+                            <input style={inputStyle} value={editForm.category} onChange={e => setEditForm({ ...editForm, category: e.target.value })} />
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            onClick={() => handleSave(p.sku)}
+                            disabled={saving}
+                            style={{ background: saving ? "#B4B2A9" : "#0F6E56", color: "#fff", border: "none", borderRadius: 6, padding: "6px 16px", cursor: saving ? "default" : "pointer", fontSize: 13 }}>
+                            {saving ? "Збереження..." : "Зберегти"}
+                          </button>
+                          <button onClick={cancelEdit} style={{ background: "transparent", border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "6px 16px", cursor: "pointer", fontSize: 13 }}>
+                            Скасувати
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={4} style={{ padding: "2rem", textAlign: "center", color: "var(--color-text-secondary)" }}>Товари не знайдено</td></tr>
+                <tr><td colSpan={6} style={{ padding: "2rem", textAlign: "center", color: "var(--color-text-secondary)" }}>Товари не знайдено</td></tr>
               )}
             </tbody>
           </table>
@@ -318,7 +404,7 @@ function Inventory({ notify }) {
     try {
       if (!adjustment || isNaN(parseInt(adjustment))) { notify("Введіть числове значення", "error"); return; }
       const result = await fetcher(`/inventory/${sku}`, "PATCH", { adjustment: parseInt(adjustment) });
-      notify(`${sku}: нова кількість — ${result.new_quantity} шт. ✓`);
+      notify(`${sku}: нова кількість — ${result.new_quantity} шт.`);
       setAdjusting(null);
       setAdjustment("");
       load();
@@ -422,7 +508,7 @@ function Orders({ notify }) {
         total_amount: parseFloat(totalAmount),
         payment_method: paymentMethod
       });
-      notify(`Чек ${result.order_id} створено ✓`);
+      notify(`Чек ${result.order_id} створено`);
       setItems([{ sku: "", quantity: 1 }]);
       setTotalAmount("");
       setShowForm(false);
@@ -437,7 +523,7 @@ function Orders({ notify }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
         <h2 style={{ fontSize: 20, fontWeight: 500, margin: 0 }}>Продажі</h2>
         <button onClick={() => setShowForm(!showForm)} style={{ background: "#185FA5", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13 }}>
-          {showForm ? "Скасувати" : "🧾 Новий чек"}
+          {showForm ? "Скасувати" : "Новий чек"}
         </button>
       </div>
 
@@ -453,7 +539,7 @@ function Orders({ notify }) {
                 <Input label={i === 0 ? "К-сть" : undefined} type="number" min="1" value={item.quantity} onChange={e => updateItem(i, "quantity", parseInt(e.target.value))} />
               </div>
               {items.length > 1 && (
-                <button onClick={() => removeItem(i)} style={{ background: "#FCEBEB", color: "#A32D2D", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer", marginBottom: 12 }}>✕</button>
+                <button onClick={() => removeItem(i)} style={{ background: "#FCEBEB", color: "#A32D2D", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer", marginBottom: 12 }}>×</button>
               )}
             </div>
           ))}
@@ -508,38 +594,76 @@ function Orders({ notify }) {
 }
 
 function Users({ notify }) {
-  const [userId, setUserId] = useState("");
-  const [userData, setUserData] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ username: "", full_name: "", role: "", access_level: 1 });
   const [showForm, setShowForm] = useState(false);
   const [lastCreated, setLastCreated] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState("");
 
-  const handleSearch = async () => {
-    try {
-      if (!userId.trim()) { notify("Введіть ID", "error"); return; }
-      const data = await fetcher(`/users/${userId.trim()}`);
-      setUserData(data);
-    } catch (e) { notify("Працівника не знайдено", "error"); setUserData(null); }
-  };
+  const ROLE_COLORS = { admin: "red", manager: "blue", cashier: "green", warehouse: "amber" };
+  const ROLE_LABELS = { admin: "Адміністратор", manager: "Менеджер", cashier: "Касир", warehouse: "Комірник" };
+
+  const load = useCallback(() => {
+    setLoading(true);
+    fetcher("/users").then(setUsers).catch(e => notify(e.message, "error")).finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   const handleRegister = async () => {
     try {
       if (!form.username || !form.full_name || !form.role) { notify("Заповніть обовʼязкові поля", "error"); return; }
       const result = await fetcher("/users/register", "POST", { ...form, access_level: parseInt(form.access_level) });
-      notify(`Працівника зареєстровано. ID: ${result.user_id} ✓`);
+      notify(`Працівника зареєстровано, ID: ${result.user_id}`);
       setLastCreated(result);
       setForm({ username: "", full_name: "", role: "", access_level: 1 });
       setShowForm(false);
+      load();
     } catch (e) { notify(e.message, "error"); }
   };
 
-  const ROLE_COLORS = { admin: "red", manager: "blue", cashier: "green", warehouse: "amber" };
+  const startEdit = (u) => {
+    setEditingId(u._id);
+    setEditForm({ full_name: u.full_name || "", role: u.role || "", access_level: u.access_level ?? 1, work_status: u.work_status || "active" });
+    setShowForm(false);
+  };
+
+  const cancelEdit = () => { setEditingId(null); setEditForm({}); };
+
+  const handleSave = async (id) => {
+    try {
+      if (!editForm.full_name || !editForm.role) { notify("ПІБ та роль обовʼязкові", "error"); return; }
+      setSaving(true);
+      await fetcher(`/users/${id}`, "PUT", editForm);
+      notify("Зміни збережено");
+      setEditingId(null);
+      load();
+    } catch (e) { notify(e.message, "error"); }
+    finally { setSaving(false); }
+  };
+
+  const filtered = users.filter(u =>
+    u.full_name?.toLowerCase().includes(search.toLowerCase()) ||
+    u.username?.toLowerCase().includes(search.toLowerCase()) ||
+    u.role?.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const inputStyle = {
+    width: "100%", boxSizing: "border-box", padding: "5px 8px",
+    border: "1px solid var(--color-border-secondary)", borderRadius: 6,
+    fontSize: 13, background: "var(--color-background-primary)",
+    color: "var(--color-text-primary)"
+  };
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
         <h2 style={{ fontSize: 20, fontWeight: 500, margin: 0 }}>Персонал</h2>
-        <button onClick={() => setShowForm(!showForm)} style={{ background: "#185FA5", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13 }}>
+        <button onClick={() => { setShowForm(!showForm); cancelEdit(); }} style={{ background: "#185FA5", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13 }}>
           {showForm ? "Скасувати" : "+ Реєстрація"}
         </button>
       </div>
@@ -571,45 +695,117 @@ function Users({ notify }) {
 
       {lastCreated && (
         <Card style={{ marginBottom: "1.25rem", borderLeft: "3px solid #0F6E56" }}>
-          <p style={{ fontWeight: 500, margin: "0 0 6px", color: "#0F6E56", fontSize: 13 }}>✓ Нещодавно зареєстровано</p>
+          <p style={{ fontWeight: 500, margin: "0 0 4px", color: "#0F6E56", fontSize: 13 }}>Нещодавно зареєстровано</p>
           <p style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: 0 }}>ID: <code>{lastCreated.user_id}</code></p>
         </Card>
       )}
 
-      <Card>
-        <p style={{ fontWeight: 500, margin: "0 0 12px", fontSize: 14 }}>Пошук за ID</p>
-        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-          <input
-            value={userId}
-            onChange={e => setUserId(e.target.value)}
-            placeholder="Введіть MongoDB ID..."
-            style={{ flex: 1 }}
-            onKeyDown={e => e.key === "Enter" && handleSearch()}
-          />
-          <button onClick={handleSearch} style={{ background: "#185FA5", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontSize: 13 }}>Знайти</button>
-        </div>
+      <input
+        placeholder="Пошук за ПІБ, логіном або роллю..."
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        style={{ marginBottom: "1rem", width: "100%", boxSizing: "border-box" }}
+      />
 
-        {userData && (
-          <div style={{ background: "var(--color-background-secondary)", borderRadius: 8, padding: "1rem" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-              <div style={{ width: 40, height: 40, borderRadius: "50%", background: "#E6F1FB", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 500, fontSize: 14, color: "#185FA5" }}>
-                {userData.full_name?.split(" ").map(n => n[0]).join("").slice(0, 2)}
-              </div>
-              <div>
-                <p style={{ margin: 0, fontWeight: 500 }}>{userData.full_name}</p>
-                <div style={{ marginTop: 4 }}>
-                  <Badge color={ROLE_COLORS[userData.role] || "gray"}>{userData.role}</Badge>
-                </div>
-              </div>
-              <div style={{ marginLeft: "auto" }}>
-                <Badge color={userData.work_status === "active" ? "green" : "red"}>
-                  {userData.work_status === "active" ? "активний" : "неактивний"}
-                </Badge>
-              </div>
-            </div>
-          </div>
-        )}
-      </Card>
+      {loading ? <p style={{ color: "var(--color-text-secondary)" }}>Завантаження...</p> : (
+        <Card>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
+                {["Логін", "ПІБ", "Роль", "Доступ", "Статус", ""].map(h => (
+                  <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontWeight: 500, color: "var(--color-text-secondary)", fontSize: 12 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((u) => (
+                <>
+                  <tr key={u._id} style={{ borderBottom: editingId === u._id ? "none" : "0.5px solid var(--color-border-tertiary)" }}>
+                    <td style={{ padding: "10px 12px" }}><code style={{ fontSize: 12 }}>{u.username}</code></td>
+                    <td style={{ padding: "10px 12px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ width: 28, height: 28, borderRadius: "50%", background: "#E6F1FB", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: 11, color: "#185FA5", flexShrink: 0 }}>
+                          {u.full_name?.split(" ").map(n => n[0]).join("").slice(0, 2)}
+                        </div>
+                        <span style={{ fontWeight: 500 }}>{u.full_name}</span>
+                      </div>
+                    </td>
+                    <td style={{ padding: "10px 12px" }}>
+                      <Badge color={ROLE_COLORS[u.role] || "gray"}>{ROLE_LABELS[u.role] || u.role}</Badge>
+                    </td>
+                    <td style={{ padding: "10px 12px", color: "var(--color-text-secondary)" }}>{u.access_level ?? "—"}</td>
+                    <td style={{ padding: "10px 12px" }}>
+                      <Badge color={u.work_status === "active" ? "green" : "red"}>
+                        {u.work_status === "active" ? "активний" : "неактивний"}
+                      </Badge>
+                    </td>
+                    <td style={{ padding: "10px 12px" }}>
+                      <button
+                        onClick={() => editingId === u._id ? cancelEdit() : startEdit(u)}
+                        style={{ fontSize: 12, padding: "4px 10px", borderRadius: 6, border: "0.5px solid var(--color-border-secondary)", background: editingId === u._id ? "#FCEBEB" : "transparent", color: editingId === u._id ? "#A32D2D" : "var(--color-text-primary)", cursor: "pointer" }}>
+                        {editingId === u._id ? "Скасувати" : "Редагувати"}
+                      </button>
+                    </td>
+                  </tr>
+                  {editingId === u._id && (
+                    <tr key={`edit-${u._id}`} style={{ borderBottom: "0.5px solid var(--color-border-tertiary)", background: "var(--color-background-secondary)" }}>
+                      <td colSpan={6} style={{ padding: "12px 12px 16px" }}>
+                        <p style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-secondary)", margin: "0 0 10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                          Редагування: {u.username}
+                        </p>
+                        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
+                          <div>
+                            <label style={{ fontSize: 12, color: "var(--color-text-secondary)", display: "block", marginBottom: 4 }}>ПІБ *</label>
+                            <input style={inputStyle} value={editForm.full_name} onChange={e => setEditForm({ ...editForm, full_name: e.target.value })} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 12, color: "var(--color-text-secondary)", display: "block", marginBottom: 4 }}>Роль *</label>
+                            <select style={inputStyle} value={editForm.role} onChange={e => setEditForm({ ...editForm, role: e.target.value })}>
+                              <option value="admin">Адміністратор</option>
+                              <option value="manager">Менеджер</option>
+                              <option value="cashier">Касир</option>
+                              <option value="warehouse">Комірник</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 12, color: "var(--color-text-secondary)", display: "block", marginBottom: 4 }}>Рівень доступу</label>
+                            <select style={inputStyle} value={editForm.access_level} onChange={e => setEditForm({ ...editForm, access_level: e.target.value })}>
+                              <option value={1}>1 — Базовий</option>
+                              <option value={2}>2 — Розширений</option>
+                              <option value={3}>3 — Адміністратор</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 12, color: "var(--color-text-secondary)", display: "block", marginBottom: 4 }}>Статус</label>
+                            <select style={inputStyle} value={editForm.work_status} onChange={e => setEditForm({ ...editForm, work_status: e.target.value })}>
+                              <option value="active">Активний</option>
+                              <option value="inactive">Неактивний</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            onClick={() => handleSave(u._id)}
+                            disabled={saving}
+                            style={{ background: saving ? "#B4B2A9" : "#0F6E56", color: "#fff", border: "none", borderRadius: 6, padding: "6px 16px", cursor: saving ? "default" : "pointer", fontSize: 13 }}>
+                            {saving ? "Збереження..." : "Зберегти"}
+                          </button>
+                          <button onClick={cancelEdit} style={{ background: "transparent", border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "6px 16px", cursor: "pointer", fontSize: 13 }}>
+                            Скасувати
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </>
+              ))}
+              {filtered.length === 0 && !loading && (
+                <tr><td colSpan={6} style={{ padding: "2rem", textAlign: "center", color: "var(--color-text-secondary)" }}>Персонал не знайдено</td></tr>
+              )}
+            </tbody>
+          </table>
+        </Card>
+      )}
     </div>
   );
 }
@@ -632,7 +828,7 @@ function Suppliers({ notify }) {
     try {
       if (!supplierId || contractItems.some(i => !i.sku)) { notify("Заповніть всі поля", "error"); return; }
       const result = await fetcher("/supply-contracts", "POST", { supplier_id: supplierId, items: contractItems });
-      notify(`Контракт ${result.contract_id} створено ✓`);
+      notify(`Контракт ${result.contract_id} створено`);
       setShowForm(false);
       setContractItems([{ sku: "", qty: 1 }]);
       setSupplierId("");
@@ -697,15 +893,30 @@ function Suppliers({ notify }) {
 }
 
 function Reports({ notify }) {
-  const [report, setReport] = useState([]);
+  const [activeReport, setActiveReport] = useState(null);
+  const [expiredData, setExpiredData] = useState([]);
+  const [restockData, setRestockData] = useState([]);
+  const [restockThreshold, setRestockThreshold] = useState(20);
   const [loading, setLoading] = useState(false);
 
-  const loadReport = async () => {
+  const loadExpired = async () => {
     setLoading(true);
+    setActiveReport("expired");
     try {
       const data = await fetcher("/admin/expired-report");
-      setReport(data);
-      if (data.length === 0) notify("Прострочених товарів не знайдено ✓");
+      setExpiredData(data);
+      if (data.length === 0) notify("Прострочених товарів не знайдено");
+    } catch (e) { notify(e.message, "error"); }
+    finally { setLoading(false); }
+  };
+
+  const loadRestock = async () => {
+    setLoading(true);
+    setActiveReport("restock");
+    try {
+      const data = await fetcher(`/admin/restock-report?threshold=${restockThreshold}`);
+      setRestockData(data);
+      if (data.length === 0) notify("Всі товари в достатній кількості");
     } catch (e) { notify(e.message, "error"); }
     finally { setLoading(false); }
   };
@@ -714,33 +925,48 @@ function Reports({ notify }) {
     <div>
       <h2 style={{ fontSize: 20, fontWeight: 500, margin: "0 0 1.25rem" }}>Звіти</h2>
 
-      <Card style={{ marginBottom: "1.25rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <p style={{ fontWeight: 500, margin: "0 0 4px" }}>Звіт по термінах придатності</p>
-            <p style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: 0 }}>Товари, термін придатності яких спливає протягом 10 днів</p>
-          </div>
-          <button onClick={loadReport} disabled={loading} style={{ background: loading ? "#B4B2A9" : "#A32D2D", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: loading ? "default" : "pointer", fontSize: 13, whiteSpace: "nowrap" }}>
-            {loading ? "Формується..." : "📋 Сформувати"}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: "1.5rem" }}>
+        <Card>
+          <p style={{ fontWeight: 500, margin: "0 0 4px" }}>Терміни придатності</p>
+          <p style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: "0 0 16px" }}>Товари, що спливають протягом 10 днів</p>
+          <button onClick={loadExpired} disabled={loading} style={{ background: loading && activeReport === "expired" ? "#B4B2A9" : "#A32D2D", color: "#fff", border: "none", borderRadius: 8, padding: "7px 16px", cursor: loading ? "default" : "pointer", fontSize: 13 }}>
+            {loading && activeReport === "expired" ? "Формується..." : "Сформувати"}
           </button>
-        </div>
-      </Card>
+        </Card>
 
-      {report.length > 0 && (
+        <Card>
+          <p style={{ fontWeight: 500, margin: "0 0 4px" }}>Звіт поповнень</p>
+          <p style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: "0 0 12px" }}>Товари нижче порогу — постачальники та рекомендована кількість</p>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <label style={{ fontSize: 13, color: "var(--color-text-secondary)", whiteSpace: "nowrap" }}>Поріг:</label>
+            <input
+              type="number" min="1" value={restockThreshold}
+              onChange={e => setRestockThreshold(parseInt(e.target.value) || 20)}
+              style={{ width: 70, padding: "5px 8px", border: "1px solid var(--color-border-secondary)", borderRadius: 6, fontSize: 13, boxSizing: "border-box" }}
+            />
+            <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>шт.</span>
+            <button onClick={loadRestock} disabled={loading} style={{ background: loading && activeReport === "restock" ? "#B4B2A9" : "#185FA5", color: "#fff", border: "none", borderRadius: 8, padding: "7px 16px", cursor: loading ? "default" : "pointer", fontSize: 13, marginLeft: 4 }}>
+              {loading && activeReport === "restock" ? "Формується..." : "Сформувати"}
+            </button>
+          </div>
+        </Card>
+      </div>
+
+      {activeReport === "expired" && expiredData.length > 0 && (
         <Card>
           <p style={{ fontWeight: 500, margin: "0 0 12px", fontSize: 14, color: "#A32D2D" }}>
-            ⚠️ Знайдено {report.length} позицій
+            Знайдено {expiredData.length} позицій із проблемним терміном
           </p>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
-                {["SKU", "Термін придатності", "Днів залишилось"].map(h => (
+                {["SKU", "Термін придатності", "Залишилось"].map(h => (
                   <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontWeight: 500, color: "var(--color-text-secondary)", fontSize: 12 }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {report.map((item, i) => (
+              {expiredData.map((item, i) => (
                 <tr key={i} style={{ borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
                   <td style={{ padding: "10px 12px" }}><code style={{ fontSize: 12 }}>{item.sku}</code></td>
                   <td style={{ padding: "10px 12px" }}>{item.expiry_date}</td>
@@ -748,6 +974,44 @@ function Reports({ notify }) {
                     <Badge color={item.days_left <= 0 ? "red" : item.days_left <= 3 ? "red" : "amber"}>
                       {item.days_left <= 0 ? "прострочено" : `${item.days_left} дн.`}
                     </Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
+
+      {activeReport === "restock" && restockData.length > 0 && (
+        <Card>
+          <p style={{ fontWeight: 500, margin: "0 0 12px", fontSize: 14, color: "#854F0B" }}>
+            {restockData.length} позицій потребують поповнення (менше {restockThreshold} шт.)
+          </p>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
+                {["Товар", "Категорія", "На складі", "Постачальник", "Контакт", "Рекомендувати"].map(h => (
+                  <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontWeight: 500, color: "var(--color-text-secondary)", fontSize: 12 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {restockData.map((item, i) => (
+                <tr key={i} style={{ borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
+                  <td style={{ padding: "10px 12px" }}>
+                    <p style={{ margin: 0, fontWeight: 500 }}>{item.name}</p>
+                    <code style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{item.sku}</code>
+                  </td>
+                  <td style={{ padding: "10px 12px", color: "var(--color-text-secondary)" }}>{item.category}</td>
+                  <td style={{ padding: "10px 12px" }}>
+                    <Badge color={item.quantity === 0 ? "red" : item.quantity < 5 ? "red" : "amber"}>
+                      {item.quantity} шт.
+                    </Badge>
+                  </td>
+                  <td style={{ padding: "10px 12px", fontWeight: 500 }}>{item.supplier_name}</td>
+                  <td style={{ padding: "10px 12px", color: "var(--color-text-secondary)" }}>{item.supplier_contact}</td>
+                  <td style={{ padding: "10px 12px" }}>
+                    <Badge color="blue">{item.suggested_qty} шт.</Badge>
                   </td>
                 </tr>
               ))}
